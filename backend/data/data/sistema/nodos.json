@@ -1,0 +1,26 @@
+[
+  {
+    "id": "n1",
+    "host": "10.0.0.1",
+    "status": "up",
+    "tipo": "principal"
+  },
+  {
+    "id": "n2",
+    "host": "10.0.0.2",
+    "status": "up",
+    "tipo": "replica"
+  },
+  {
+    "id": "n3",
+    "host": "10.0.0.3",
+    "status": "up",
+    "tipo": "analisis"
+  },
+  {
+    "id": "n4",
+    "host": "10.0.0.5",
+    "status": "down",
+    "tipo": "almacen"
+  }
+]

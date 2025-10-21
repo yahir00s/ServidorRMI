@@ -1,0 +1,343 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <title>Archivos - Sistema Distribuido</title>
+  <link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+  <div class="container">
+    <nav class="navbar">
+      <div class="nav-brand">🌐 Sistema Distribuido OO</div>
+      <div class="nav-user">
+        <span id="username"></span>
+        <button onclick="logout()" class="btn-secondary">Salir</button>
+      </div>
+    </nav>
+
+    <aside class="sidebar">
+      <ul class="menu">
+        <li><a href="dashboard.html">📊 Dashboard</a></li>
+        <li><a href="usuarios.html">👥 Usuarios</a></li>
+        <li><a href="archivos.html" class="active">📁 Archivos</a></li>
+        <li><a href="nodos.html">🖥️ Nodos</a></li>
+        <li><a href="seguridad.html">🔒 Seguridad</a></li>
+        <li><a href="auditor.html">📋 Auditoría</a></li>
+        <li><a href="replicacion.html">🔄 Replicación</a></li>
+      </ul>
+    </aside>
+
+    <main class="content">
+      <h1>📁 Gestión de Archivos</h1>
+
+      <!-- Botones de acción -->
+      <div class="action-bar">
+        <button onclick="showCreateModal()" class="btn-primary">+ Crear Archivo</button>
+        <button onclick="loadArchivos()" class="btn-secondary">🔄 Refrescar</button>
+        <button onclick="demoConcurrenciaCompleta()" class="btn-demo">
+          ⚡ Demo: Control de Concurrencia
+        </button>
+      </div>
+
+      <!-- Lista de archivos -->
+      <div id="archivosContainer"></div>
+
+      <!-- Modal crear/editar archivo -->
+      <div id="modalArchivo" class="modal" style="display:none;">
+        <div class="modal-content">
+          <span class="close" onclick="closeModal()">&times;</span>
+          <h2 id="modalTitle">Crear Archivo</h2>
+          <form id="formArchivo" onsubmit="saveArchivo(event)">
+            <input type="hidden" id="archivoId">
+            <input type="hidden" id="archivoVersion">
+            
+            <div class="form-group">
+              <label>Nombre del archivo</label>
+              <input type="text" id="archivoNombre" required>
+            </div>
+            
+            <div class="form-group">
+              <label>Contenido</label>
+              <textarea id="archivoContenido" rows="10" required></textarea>
+            </div>
+            
+            <div class="form-group">
+              <label>Owner (ID de usuario)</label>
+              <input type="text" id="archivoOwner" value="u1">
+            </div>
+            
+            <div class="form-actions">
+              <button type="submit" class="btn-primary">Guardar</button>
+              <button type="button" onclick="closeModal()" class="btn-secondary">Cancelar</button>
+            </div>
+          </form>
+        </div>
+      </div>
+
+      <!-- Demo de concurrencia -->
+      <div id="demoConcurrencia" class="demo-section" style="display:none;">
+        <h2>🎯 Demostración: Control Optimista de Concurrencia</h2>
+        <div class="demo-explanation">
+          <p><strong>Escenario:</strong> Dos usuarios intentan modificar el mismo archivo simultáneamente</p>
+          <ol>
+            <li>Usuario A y Usuario B obtienen el archivo (versión 1)</li>
+            <li>Usuario A guarda primero → versión 2 ✅</li>
+            <li>Usuario B intenta guardar con versión 1 → Conflicto 409 ❌</li>
+          </ol>
+        </div>
+        
+        <div class="demo-panels">
+          <div class="demo-panel">
+            <h3>👤 Usuario A</h3>
+            <textarea id="usuarioA" rows="5"></textarea>
+            <button onclick="guardarUsuarioA()" class="btn-primary">Guardar (Usuario A)</button>
+            <div id="resultadoA" class="demo-result"></div>
+          </div>
+          
+          <div class="demo-panel">
+            <h3>👤 Usuario B</h3>
+            <textarea id="usuarioB" rows="5"></textarea>
+            <button onclick="guardarUsuarioB()" class="btn-primary">Guardar (Usuario B)</button>
+            <div id="resultadoB" class="demo-result"></div>
+          </div>
+        </div>
+        
+        <button onclick="cerrarDemo()" class="btn-secondary">Cerrar Demo</button>
+      </div>
+    </main>
+  </div>
+
+  <div id="notifications"></div>
+
+  <script src="js/config.js"></script>
+  <script src="js/main.js"></script>
+  <script>
+    checkAuth();
+    document.getElementById('username').textContent = localStorage.getItem('username');
+
+    let archivosGlobal = [];
+    let archivoDemo = null;
+
+    // Cargar archivos
+    async function loadArchivos() {
+      try {
+        const data = await fetchAPI('/archivos');
+        archivosGlobal = data.archivos || [];
+        renderArchivos(archivosGlobal);
+      } catch (error) {
+        showError('Error cargando archivos');
+      }
+    }
+
+    function renderArchivos(archivos) {
+      const container = document.getElementById('archivosContainer');
+      
+      if (archivos.length === 0) {
+        container.innerHTML = '<p class="empty-state">No hay archivos. Crea uno nuevo.</p>';
+        return;
+      }
+      
+      container.innerHTML = `
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>Nombre</th>
+              <th>Owner</th>
+              <th>Versión</th>
+              <th>Nodo</th>
+              <th>Réplicas</th>
+              <th>Fecha</th>
+              <th>Acciones</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${archivos.map(archivo => `
+              <tr>
+                <td>📄 ${archivo.nombre}</td>
+                <td>${archivo.owner}</td>
+                <td><span class="badge">v${archivo.version}</span></td>
+                <td>${archivo.nodoId}</td>
+                <td>${archivo.replicas?.length || 0} réplicas</td>
+                <td>${formatDate(archivo.createdAt)}</td>
+                <td>
+                  <button onclick="editArchivo('${archivo.id}')" class="btn-small">✏️ Editar</button>
+                  <button onclick="viewArchivo('${archivo.id}')" class="btn-small">👁️ Ver</button>
+                </td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+      `;
+    }
+
+    // Crear archivo
+    function showCreateModal() {
+      document.getElementById('modalTitle').textContent = 'Crear Archivo';
+      document.getElementById('formArchivo').reset();
+      document.getElementById('archivoId').value = '';
+      document.getElementById('modalArchivo').style.display = 'block';
+    }
+
+    function closeModal() {
+      document.getElementById('modalArchivo').style.display = 'none';
+    }
+
+    async function saveArchivo(e) {
+      e.preventDefault();
+      
+      const id = document.getElementById('archivoId').value;
+      const nombre = document.getElementById('archivoNombre').value;
+      const contenido = document.getElementById('archivoContenido').value;
+      const owner = document.getElementById('archivoOwner').value;
+      const version = parseInt(document.getElementById('archivoVersion').value) || 1;
+      
+      try {
+        if (id) {
+          // Actualizar
+          await fetchAPI(`/archivos/${id}`, {
+            method: 'PUT',
+            body: JSON.stringify({ version, contenido })
+          });
+          showSuccess('✅ Archivo actualizado correctamente');
+        } else {
+          // Crear
+          await fetchAPI('/archivos', {
+            method: 'POST',
+            body: JSON.stringify({ nombre, contenido, owner })
+          });
+          showSuccess('✅ Archivo creado y replicado');
+        }
+        
+        closeModal();
+        loadArchivos();
+      } catch (error) {
+        showError('Error: ' + error.message);
+      }
+    }
+
+    async function editArchivo(id) {
+      const archivo = archivosGlobal.find(a => a.id === id);
+      if (!archivo) return;
+      
+      document.getElementById('modalTitle').textContent = 'Editar Archivo';
+      document.getElementById('archivoId').value = archivo.id;
+      document.getElementById('archivoNombre').value = archivo.nombre;
+      document.getElementById('archivoContenido').value = archivo.contenido;
+      document.getElementById('archivoOwner').value = archivo.owner;
+      document.getElementById('archivoVersion').value = archivo.version;
+      document.getElementById('modalArchivo').style.display = 'block';
+    }
+
+    function viewArchivo(id) {
+      const archivo = archivosGlobal.find(a => a.id === id);
+      if (!archivo) return;
+      
+      alert(`
+📄 ${archivo.nombre}
+━━━━━━━━━━━━━━━━━━
+📋 Contenido:
+${archivo.contenido}
+
+ℹ️ Información:
+- Versión: ${archivo.version}
+- Nodo: ${archivo.nodoId}
+- Réplicas: ${archivo.replicas?.join(', ') || 'ninguna'}
+- Creado: ${formatDate(archivo.createdAt)}
+      `.trim());
+    }
+
+    // DEMO DE CONCURRENCIA
+    async function demoConcurrenciaCompleta() {
+      // Crear archivo de prueba
+      try {
+        const response = await fetchAPI('/archivos', {
+          method: 'POST',
+          body: JSON.stringify({
+            nombre: 'demo_concurrencia.txt',
+            contenido: 'Contenido inicial para demo',
+            owner: 'demo'
+          })
+        });
+        
+        archivoDemo = response.archivo;
+        
+        document.getElementById('usuarioA').value = archivoDemo.contenido;
+        document.getElementById('usuarioB').value = archivoDemo.contenido;
+        
+        document.getElementById('demoConcurrencia').style.display = 'block';
+        showSuccess('✅ Archivo de demo creado. Intenta modificarlo con ambos usuarios.');
+      } catch (error) {
+        showError('Error creando archivo demo');
+      }
+    }
+
+    async function guardarUsuarioA() {
+      if (!archivoDemo) return;
+      
+      const contenido = document.getElementById('usuarioA').value;
+      const resultadoDiv = document.getElementById('resultadoA');
+      
+      try {
+        const response = await fetchAPI(`/archivos/${archivoDemo.id}`, {
+          method: 'PUT',
+          body: JSON.stringify({
+            version: archivoDemo.version,
+            contenido: contenido
+          })
+        });
+        
+        archivoDemo = response.archivo;
+        resultadoDiv.innerHTML = `
+          <div class="success">
+            ✅ Guardado exitoso<br>
+            Nueva versión: ${archivoDemo.version}
+          </div>
+        `;
+      } catch (error) {
+        resultadoDiv.innerHTML = `<div class="error">❌ ${error.message}</div>`;
+      }
+    }
+
+    async function guardarUsuarioB() {
+      if (!archivoDemo) return;
+      
+      const contenido = document.getElementById('usuarioB').value;
+      const resultadoDiv = document.getElementById('resultadoB');
+      
+      try {
+        // Usar versión desactualizada intencionalmente
+        const response = await fetchAPI(`/archivos/${archivoDemo.id}`, {
+          method: 'PUT',
+          body: JSON.stringify({
+            version: archivoDemo.version - 1, // ← VERSIÓN DESACTUALIZADA
+            contenido: contenido
+          })
+        });
+        
+        resultadoDiv.innerHTML = `<div class="success">✅ Guardado</div>`;
+      } catch (error) {
+        resultadoDiv.innerHTML = `
+          <div class="error">
+            ❌ CONFLICTO DETECTADO<br>
+            ${error.message}<br>
+            <small>Versión actual: ${archivoDemo.version}</small>
+          </div>
+        `;
+      }
+    }
+
+    function cerrarDemo() {
+      document.getElementById('demoConcurrencia').style.display = 'none';
+    }
+
+    // Cargar al iniciar
+    loadArchivos();
+
+    // Check URL para auto-demo
+    const urlParams = new URLSearchParams(window.location.search);
+    if (urlParams.get('demo') === 'concurrencia') {
+      setTimeout(demoConcurrenciaCompleta, 1000);
+    }
+  </script>
+</body>
+</html>

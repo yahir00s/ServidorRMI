@@ -1,0 +1,400 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <title>Replicación - Sistema Distribuido</title>
+  <link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+  <div class="container">
+    <nav class="navbar">
+      <div class="nav-brand">🌐 Sistema Distribuido OO</div>
+      <div class="nav-user">
+        <span id="username"></span>
+        <button onclick="logout()" class="btn-secondary">Salir</button>
+      </div>
+    </nav>
+
+    <aside class="sidebar">
+      <ul class="menu">
+        <li><a href="dashboard.html">📊 Dashboard</a></li>
+        <li><a href="usuarios.html">👥 Usuarios</a></li>
+        <li><a href="archivos.html">📁 Archivos</a></li>
+        <li><a href="nodos.html">🖥️ Nodos</a></li>
+        <li><a href="seguridad.html">🔒 Seguridad</a></li>
+        <li><a href="auditor.html">📋 Auditoría</a></li>
+        <li><a href="replicacion.html" class="active">🔄 Replicación</a></li>
+      </ul>
+    </aside>
+
+    <main class="content">
+      <h1>🔄 Gestión de Replicación</h1>
+
+      <div class="section">
+        <h2>Sincronización Manual</h2>
+        <p>Forzar sincronización de datos entre nodos del cluster</p>
+        
+        <form onsubmit="sincronizarManual(event)" class="sync-form">
+          <div class="form-row">
+            <div class="form-group">
+              <label>Nodo Origen</label>
+              <select id="nodoOrigen" required>
+                <option value="">Seleccionar...</option>
+              </select>
+            </div>
+            
+            <div class="sync-arrow">→</div>
+            
+            <div class="form-group">
+              <label>Nodo Destino</label>
+              <select id="nodoDestino" required>
+                <option value="">Seleccionar...</option>
+              </select>
+            </div>
+          </div>
+          
+          <button type="submit" class="btn-primary">🔄 Sincronizar Archivos</button>
+        </form>
+        
+        <div id="syncResult" class="sync-result"></div>
+      </div>
+
+      <!-- Estado de replicación -->
+      <div class="section">
+        <h2>Estado de Réplicas</h2>
+        <button onclick="cargarEstadoReplicas()" class="btn-secondary">🔄 Actualizar</button>
+        <div id="estadoReplicas"></div>
+      </div>
+
+      <!-- Topología de replicación -->
+      <div class="section">
+        <h2>Topología del Cluster</h2>
+        <div id="topologia" class="topologia-container"></div>
+      </div>
+
+      <!-- Logs de replicación -->
+      <div class="section">
+        <h2>Historial de Sincronización</h2>
+        <div id="historialSync" class="logs-container"></div>
+      </div>
+    </main>
+  </div>
+
+  <div id="notifications"></div>
+
+  <script src="js/config.js"></script>
+  <script src="js/main.js"></script>
+  <script>
+    checkAuth();
+    document.getElementById('username').textContent = localStorage.getItem('username');
+
+    let nodos = [];
+    let historialSincronizaciones = [];
+
+    // Cargar nodos disponibles
+    async function cargarNodos() {
+      try {
+        const data = await fetchAPI('/nodos');
+        nodos = data.nodos || [];
+        
+        const origenSelect = document.getElementById('nodoOrigen');
+        const destinoSelect = document.getElementById('nodoDestino');
+        
+        const options = nodos
+          .filter(n => n.status === 'up')
+          .map(n => `<option value="${n.id}">${n.id} - ${n.host} (${n.tipo})</option>`)
+          .join('');
+        
+        origenSelect.innerHTML = '<option value="">Seleccionar...</option>' + options;
+        destinoSelect.innerHTML = '<option value="">Seleccionar...</option>' + options;
+      } catch (error) {
+        showError('Error cargando nodos');
+      }
+    }
+
+    // Sincronizar manualmente
+    async function sincronizarManual(e) {
+      e.preventDefault();
+      
+      const origen = document.getElementById('nodoOrigen').value;
+      const destino = document.getElementById('nodoDestino').value;
+      const resultDiv = document.getElementById('syncResult');
+      
+      if (origen === destino) {
+        showWarning('⚠️ Los nodos origen y destino deben ser diferentes');
+        return;
+      }
+      
+      resultDiv.innerHTML = '<div class="loading">🔄 Sincronizando datos...</div>';
+      
+      try {
+        const response = await fetchAPI('/archivos/sincronizar', {
+          method: 'POST',
+          body: JSON.stringify({ origen, destino })
+        });
+        
+        resultDiv.innerHTML = `
+          <div class="sync-success">
+            ✅ <strong>SINCRONIZACIÓN COMPLETADA</strong><br><br>
+            <div class="sync-details">
+              <div class="sync-detail-item">
+                <span class="label">Origen:</span>
+                <span class="value">${response.origen}</span>
+              </div>
+              <div class="sync-detail-item">
+                <span class="label">Destino:</span>
+                <span class="value">${response.destino}</span>
+              </div>
+              <div class="sync-detail-item">
+                <span class="label">Registros copiados:</span>
+                <span class="value">${response.registros}</span>
+              </div>
+              <div class="sync-detail-item">
+                <span class="label">Timestamp:</span>
+                <span class="value">${formatDate(response.timestamp)}</span>
+              </div>
+            </div>
+          </div>
+        `;
+        
+        // Guardar en historial
+        historialSincronizaciones.unshift({
+          origen: response.origen,
+          destino: response.destino,
+          registros: response.registros,
+          timestamp: response.timestamp,
+          estado: 'success'
+        });
+        
+        mostrarHistorial();
+        showSuccess(`✅ ${response.registros} archivos sincronizados`);
+        
+      } catch (error) {
+        resultDiv.innerHTML = `
+          <div class="sync-error">
+            ❌ <strong>ERROR EN SINCRONIZACIÓN</strong><br><br>
+            ${error.message}
+          </div>
+        `;
+        
+        historialSincronizaciones.unshift({
+          origen,
+          destino,
+          timestamp: new Date().toISOString(),
+          estado: 'error',
+          error: error.message
+        });
+        
+        mostrarHistorial();
+        showError('Error en sincronización');
+      }
+    }
+
+    // Cargar estado de réplicas
+    async function cargarEstadoReplicas() {
+      try {
+        const data = await fetchAPI('/archivos');
+        const archivos = data.archivos || [];
+        const container = document.getElementById('estadoReplicas');
+        
+        if (archivos.length === 0) {
+          container.innerHTML = '<p class="empty-state">No hay archivos en el sistema</p>';
+          return;
+        }
+        
+        // Agrupar por nodo
+        const porNodo = {};
+        archivos.forEach(archivo => {
+          const nodo = archivo.nodoId;
+          if (!porNodo[nodo]) porNodo[nodo] = [];
+          porNodo[nodo].push(archivo);
+        });
+        
+        container.innerHTML = `
+          <div class="replicas-grid">
+            ${Object.keys(porNodo).map(nodo => `
+              <div class="replica-card">
+                <h4>${nodo}</h4>
+                <div class="replica-stats">
+                  <div class="stat">
+                    <strong>${porNodo[nodo].length}</strong>
+                    <span>archivos</span>
+                  </div>
+                  <div class="stat">
+                    <strong>${porNodo[nodo].reduce((sum, a) => sum + (a.replicas?.length || 0), 0)}</strong>
+                    <span>réplicas</span>
+                  </div>
+                </div>
+                <button onclick="verDetalleNodo('${nodo}')" class="btn-small">
+                  Ver Detalle
+                </button>
+              </div>
+            `).join('')}
+          </div>
+        `;
+      } catch (error) {
+        showError('Error cargando estado de réplicas');
+      }
+    }
+
+    // Ver detalle de nodo
+    async function verDetalleNodo(nodoId) {
+      try {
+        const data = await fetchAPI('/archivos');
+        const archivos = (data.archivos || []).filter(a => a.nodoId === nodoId);
+        
+        const popup = window.open('', `Nodo ${nodoId}`, 'width=800,height=600');
+        popup.document.write(`
+          <html>
+            <head>
+              <title>Archivos en ${nodoId}</title>
+              <style>
+                body { 
+                  font-family: system-ui; 
+                  padding: 20px; 
+                  background: #f5f5f5; 
+                }
+                h2 { color: #333; }
+                table { 
+                  width: 100%; 
+                  border-collapse: collapse; 
+                  background: white;
+                  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+                }
+                th, td { 
+                  padding: 12px; 
+                  text-align: left; 
+                  border-bottom: 1px solid #ddd; 
+                }
+                th { 
+                  background: #4CAF50; 
+                  color: white; 
+                }
+                tr:hover { background: #f5f5f5; }
+                .badge { 
+                  background: #2196F3; 
+                  color: white; 
+                  padding: 2px 8px; 
+                  border-radius: 3px; 
+                  font-size: 12px; 
+                }
+              </style>
+            </head>
+            <body>
+              <h2>📁 Archivos en ${nodoId}</h2>
+              <p><strong>Total:</strong> ${archivos.length} archivos</p>
+              <table>
+                <thead>
+                  <tr>
+                    <th>Nombre</th>
+                    <th>Versión</th>
+                    <th>Owner</th>
+                    <th>Réplicas</th>
+                    <th>Creado</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  ${archivos.map(a => `
+                    <tr>
+                      <td>${a.nombre}</td>
+                      <td><span class="badge">v${a.version}</span></td>
+                      <td>${a.owner}</td>
+                      <td>${a.replicas?.join(', ') || 'ninguna'}</td>
+                      <td>${new Date(a.createdAt).toLocaleString()}</td>
+                    </tr>
+                  `).join('')}
+                </tbody>
+              </table>
+            </body>
+          </html>
+        `);
+      } catch (error) {
+        showError('Error cargando detalle del nodo');
+      }
+    }
+
+    // Mostrar topología
+    async function mostrarTopologia() {
+      try {
+        const data = await fetchAPI('/nodos');
+        const nodos = data.nodos || [];
+        const container = document.getElementById('topologia');
+        
+        container.innerHTML = `
+          <div class="topology-diagram">
+            <div class="topology-title">Cluster de ${nodos.length} nodos</div>
+            <div class="topology-nodes">
+              ${nodos.map(nodo => `
+                <div class="topology-node ${nodo.status}">
+                  <div class="node-icon">${nodo.status === 'up' ? '🟢' : '🔴'}</div>
+                  <div class="node-name">${nodo.id}</div>
+                  <div class="node-type">${nodo.tipo}</div>
+                  <div class="node-host">${nodo.host}</div>
+                </div>
+              `).join('')}
+            </div>
+            <div class="topology-legend">
+              <span class="legend-item">🟢 Online</span>
+              <span class="legend-item">🔴 Offline</span>
+            </div>
+          </div>
+        `;
+      } catch (error) {
+        showError('Error cargando topología');
+      }
+    }
+
+    // Mostrar historial
+    function mostrarHistorial() {
+      const container = document.getElementById('historialSync');
+      
+      if (historialSincronizaciones.length === 0) {
+        container.innerHTML = '<p class="empty-state">No hay sincronizaciones registradas</p>';
+        return;
+      }
+      
+      container.innerHTML = `
+        <table class="logs-table">
+          <thead>
+            <tr>
+              <th>Fecha</th>
+              <th>Origen</th>
+              <th>Destino</th>
+              <th>Registros</th>
+              <th>Estado</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${historialSincronizaciones.slice(0, 10).map(sync => `
+              <tr class="${sync.estado}">
+                <td>${formatDate(sync.timestamp)}</td>
+                <td>${sync.origen}</td>
+                <td>${sync.destino}</td>
+                <td>${sync.registros || '-'}</td>
+                <td>
+                  ${sync.estado === 'success' ? 
+                    '<span class="badge success">✅ Exitosa</span>' : 
+                    '<span class="badge error">❌ Error</span>'
+                  }
+                </td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+      `;
+    }
+
+    // Cargar datos al iniciar
+    cargarNodos();
+    cargarEstadoReplicas();
+    mostrarTopologia();
+    mostrarHistorial();
+
+    // Auto-refresh cada 10 segundos
+    setInterval(() => {
+      cargarEstadoReplicas();
+      mostrarTopologia();
+    }, 10000);
+  </script>
+</body>
+</html>

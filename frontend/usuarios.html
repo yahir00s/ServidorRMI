@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <title>Usuarios - Sistema Distribuido</title>
+  <link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+  <div class="container">
+    <nav class="navbar">
+      <div class="nav-brand">🌐 Sistema Distribuido OO</div>
+      <div class="nav-user">
+        <span id="username"></span>
+        <button onclick="logout()" class="btn-secondary">Salir</button>
+      </div>
+    </nav>
+
+    <aside class="sidebar">
+      <ul class="menu">
+        <li><a href="dashboard.html">📊 Dashboard</a></li>
+        <li><a href="usuarios.html" class="active">👥 Usuarios</a></li>
+        <li><a href="archivos.html">📁 Archivos</a></li>
+        <li><a href="nodos.html">🖥️ Nodos</a></li>
+        <li><a href="seguridad.html">🔒 Seguridad</a></li>
+        <li><a href="auditor.html">📋 Auditoría</a></li>
+        <li><a href="replicacion.html">🔄 Replicación</a></li>
+      </ul>
+    </aside>
+
+    <main class="content">
+      <h1>👥 Gestión de Usuarios</h1>
+
+      <div class="action-bar">
+        <button onclick="showCreateUserModal()" class="btn-primary">+ Crear Usuario</button>
+        <button onclick="loadUsuarios()" class="btn-secondary">🔄 Refrescar</button>
+      </div>
+
+      <div id="usuariosContainer"></div>
+
+      <!-- Modal crear usuario -->
+      <div id="modalUsuario" class="modal" style="display:none;">
+        <div class="modal-content">
+          <span class="close" onclick="closeUserModal()">&times;</span>
+          <h2>Crear Usuario</h2>
+          <form id="formUsuario" onsubmit="saveUsuario(event)">
+            <div class="form-group">
+              <label>Nombre</label>
+              <input type="text" id="usuarioNombre" required>
+            </div>
+            
+            <div class="form-group">
+              <label>Email</label>
+              <input type="email" id="usuarioEmail" required>
+            </div>
+            
+            <div class="form-group">
+              <label>Rol</label>
+              <select id="usuarioRol">
+                <option value="user">Usuario</option>
+                <option value="admin">Administrador</option>
+                <option value="auditor">Auditor</option>
+              </select>
+            </div>
+            
+            <div class="form-actions">
+              <button type="submit" class="btn-primary">Guardar</button>
+              <button type="button" onclick="closeUserModal()" class="btn-secondary">Cancelar</button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <div id="notifications"></div>
+
+  <script src="js/config.js"></script>
+  <script src="js/main.js"></script>
+  <script>
+    checkAuth();
+    document.getElementById('username').textContent = localStorage.getItem('username');
+
+    let usuariosGlobal = [];
+
+    async function loadUsuarios() {
+      try {
+        const data = await fetchAPI('/usuarios');
+        usuariosGlobal = data.usuarios || [];
+        renderUsuarios(usuariosGlobal);
+      } catch (error) {
+        showError('Error cargando usuarios');
+      }
+    }
+
+    function renderUsuarios(usuarios) {
+      const container = document.getElementById('usuariosContainer');
+      
+      if (usuarios.length === 0) {
+        container.innerHTML = '<p class="empty-state">No hay usuarios. Crea uno nuevo.</p>';
+        return;
+      }
+      
+      container.innerHTML = `
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>ID</th>
+              <th>Nombre</th>
+              <th>Email</th>
+              <th>Rol</th>
+              <th>Creado</th>
+              <th>Acciones</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${usuarios.map(usuario => `
+              <tr>
+                <td>${usuario.id}</td>
+                <td>${usuario.nombre}</td>
+                <td>${usuario.email}</td>
+                <td><span class="badge badge-${usuario.rol}">${usuario.rol}</span></td>
+                <td>${usuario.createdAt ? formatDate(usuario.createdAt) : '-'}</td>
+                <td>
+                  <button onclick="deleteUsuario('${usuario.id}')" class="btn-danger-small">🗑️</button>
+                </td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+      `;
+    }
+
+    function showCreateUserModal() {
+      document.getElementById('formUsuario').reset();
+      document.getElementById('modalUsuario').style.display = 'block';
+    }
+
+    function closeUserModal() {
+      document.getElementById('modalUsuario').style.display = 'none';
+    }
+
+    async function saveUsuario(e) {
+      e.preventDefault();
+      
+      const nombre = document.getElementById('usuarioNombre').value;
+      const email = document.getElementById('usuarioEmail').value;
+      const rol = document.getElementById('usuarioRol').value;
+      
+      try {
+        await fetchAPI('/usuarios', {
+          method: 'POST',
+          body: JSON.stringify({ nombre, email, rol })
+        });
+        
+        showSuccess('✅ Usuario creado correctamente');
+        closeUserModal();
+        loadUsuarios();
+      } catch (error) {
+        showError('Error creando usuario: ' + error.message);
+      }
+    }
+
+    async function deleteUsuario(id) {
+      if (!confirm('¿Eliminar este usuario?')) return;
+      
+      try {
+        await fetchAPI(`/usuarios/${id}`, { method: 'DELETE' });
+        showSuccess('✅ Usuario eliminado');
+        loadUsuarios();
+      } catch (error) {
+        showError('Error eliminando usuario');
+      }
+    }
+
+    loadUsuarios();
+  </script>
+</body>
+</html>

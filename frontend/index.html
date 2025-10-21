@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Sistema Distribuido OO - Login</title>
+  <link rel="stylesheet" href="css/styles.css">
+</head>
+<body class="login-page">
+  <div class="login-container">
+    <div class="login-box">
+      <h1>🌐 Sistema Distribuido OO</h1>
+      <p class="subtitle">Gestión de recursos distribuidos con tolerancia a fallos</p>
+      
+      <form id="loginForm" onsubmit="login(event)">
+        <div class="form-group">
+          <label>👤 Usuario</label>
+          <input type="text" id="username" value="admin" required>
+        </div>
+        
+        <div class="form-group">
+          <label>🔒 Contraseña</label>
+          <input type="password" id="password" value="admin123" required>
+        </div>
+        
+        <button type="submit" class="btn-primary">Iniciar Sesión</button>
+      </form>
+      
+      <div id="loginError" class="error-message" style="display:none;"></div>
+      
+      <div class="info-box">
+        <h3>Credenciales de prueba:</h3>
+        <p><strong>Usuario:</strong> admin</p>
+        <p><strong>Contraseña:</strong> admin123</p>
+      </div>
+    </div>
+  </div>
+
+  <script src="js/config.js"></script>
+  <script src="js/main.js"></script>
+  <script>
+    async function login(e) {
+      e.preventDefault();
+      const username = document.getElementById('username').value;
+      const password = document.getElementById('password').value;
+      const errorDiv = document.getElementById('loginError');
+      
+      try {
+        const response = await fetch(`${API_URL}/seguridad/login`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ username, password })
+        });
+        
+        const data = await response.json();
+        
+        if (response.ok && data.token) {
+          localStorage.setItem('token', data.token);
+          localStorage.setItem('username', username);
+          showSuccess('Login exitoso. Redirigiendo...');
+          setTimeout(() => {
+            window.location.href = 'dashboard.html';
+          }, 1000);
+        } else {
+          errorDiv.textContent = '❌ ' + (data.error || 'Credenciales inválidas');
+          errorDiv.style.display = 'block';
+        }
+      } catch (error) {
+        errorDiv.textContent = '❌ Error de conexión con el servidor';
+        errorDiv.style.display = 'block';
+      }
+    }
+  </script>
+</body>
+</html>

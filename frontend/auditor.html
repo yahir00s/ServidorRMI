@@ -1,0 +1,382 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <title>Auditoría - Sistema Distribuido</title>
+  <link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+  <div class="container">
+    <nav class="navbar">
+      <div class="nav-brand">🌐 Sistema Distribuido OO</div>
+      <div class="nav-user">
+        <span id="username"></span>
+        <button onclick="logout()" class="btn-secondary">Salir</button>
+      </div>
+    </nav>
+
+    <aside class="sidebar">
+      <ul class="menu">
+        <li><a href="dashboard.html">📊 Dashboard</a></li>
+        <li><a href="usuarios.html">👥 Usuarios</a></li>
+        <li><a href="archivos.html">📁 Archivos</a></li>
+        <li><a href="nodos.html">🖥️ Nodos</a></li>
+        <li><a href="seguridad.html">🔒 Seguridad</a></li>
+        <li><a href="auditor.html" class="active">📋 Auditoría</a></li>
+        <li><a href="replicacion.html">🔄 Replicación</a></li>
+      </ul>
+    </aside>
+
+    <main class="content">
+      <h1>📋 Sistema de Auditoría</h1>
+
+      <!-- Controles -->
+      <div class="action-bar">
+        <button onclick="cargarLogs()" class="btn-secondary">🔄 Refrescar</button>
+        <button onclick="limpiarLogs()" class="btn-danger">🗑️ Limpiar Logs</button>
+        <button onclick="exportarLogs()" class="btn-primary">📥 Exportar CSV</button>
+      </div>
+
+      <!-- Filtros -->
+      <div class="filters-bar">
+        <input 
+          type="text" 
+          id="filtroOrigen" 
+          placeholder="Filtrar por origen..." 
+          onkeyup="aplicarFiltros()"
+          class="filter-input"
+        >
+        <input 
+          type="text" 
+          id="filtroAccion" 
+          placeholder="Filtrar por acción..." 
+          onkeyup="aplicarFiltros()"
+          class="filter-input"
+        >
+        <select id="filtroFecha" onchange="aplicarFiltros()" class="filter-select">
+          <option value="">Todas las fechas</option>
+          <option value="hoy">Hoy</option>
+          <option value="ayer">Ayer</option>
+          <option value="semana">Última semana</option>
+        </select>
+      </div>
+
+      <!-- Estadísticas -->
+      <div class="stats-grid">
+        <div class="stat-card">
+          <h3>Total de Eventos</h3>
+          <div class="stat-value" id="totalEventos">0</div>
+        </div>
+        <div class="stat-card">
+          <h3>Eventos Hoy</h3>
+          <div class="stat-value" id="eventosHoy">0</div>
+        </div>
+        <div class="stat-card">
+          <h3>Orígenes Únicos</h3>
+          <div class="stat-value" id="origenesUnicos">0</div>
+        </div>
+        <div class="stat-card">
+          <h3>Acciones Únicas</h3>
+          <div class="stat-value" id="accionesUnicas">0</div>
+        </div>
+      </div>
+
+      <!-- Tabla de logs -->
+      <div class="section">
+        <h2>Registro de Eventos</h2>
+        <div id="logsContainer"></div>
+      </div>
+
+      <!-- Gráfico de actividad (opcional) -->
+      <div class="section">
+        <h2>Actividad por Hora</h2>
+        <div id="actividadGrafico"></div>
+      </div>
+    </main>
+  </div>
+
+  <div id="notifications"></div>
+
+  <script src="js/config.js"></script>
+  <script src="js/main.js"></script>
+  <script>
+    checkAuth();
+    document.getElementById('username').textContent = localStorage.getItem('username');
+
+    let logsGlobal = [];
+    let logsFiltrados = [];
+
+    // Cargar logs
+    async function cargarLogs() {
+      try {
+        const data = await fetchAPI('/auditor/logs');
+        logsGlobal = data || [];
+        logsFiltrados = [...logsGlobal];
+        
+        renderLogs(logsFiltrados);
+        calcularEstadisticas();
+        renderGraficoActividad();
+      } catch (error) {
+        showError('Error cargando logs');
+      }
+    }
+
+    // Renderizar logs
+    function renderLogs(logs) {
+      const container = document.getElementById('logsContainer');
+      
+      if (logs.length === 0) {
+        container.innerHTML = '<p class="empty-state">No hay eventos registrados</p>';
+        return;
+      }
+      
+      // Ordenar por fecha descendente
+      logs.sort((a, b) => new Date(b.ts || b.timestamp) - new Date(a.ts || a.timestamp));
+      
+      container.innerHTML = `
+        <table class="data-table logs-table">
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>Fecha/Hora</th>
+              <th>Origen</th>
+              <th>Acción</th>
+              <th>Detalle</th>
+              <th>Acciones</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${logs.map((log, index) => `
+              <tr>
+                <td>${log.id || index + 1}</td>
+                <td>${formatDate(log.ts || log.timestamp)}</td>
+                <td><span class="badge badge-origen">${log.origen}</span></td>
+                <td><span class="badge badge-accion">${log.accion}</span></td>
+                <td class="log-detail">${formatDetalle(log.detalle)}</td>
+                <td>
+                  <button onclick="verDetalleLog(${index})" class="btn-small">👁️</button>
+                  <button onclick="copiarLog(${index})" class="btn-small">📋</button>
+                </td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+      `;
+    }
+
+    // Formatear detalle
+    function formatDetalle(detalle) {
+      if (typeof detalle === 'string') return detalle;
+      if (typeof detalle === 'object') {
+        const str = JSON.stringify(detalle);
+        return str.length > 50 ? str.substring(0, 50) + '...' : str;
+      }
+      return String(detalle);
+    }
+
+    // Ver detalle completo
+    function verDetalleLog(index) {
+      const log = logsFiltrados[index];
+      
+      const popup = window.open('', 'Log Detail', 'width=600,height=500');
+      popup.document.write(`
+        <html>
+          <head>
+            <title>Detalle del Evento</title>
+            <style>
+              body { 
+                font-family: monospace; 
+                padding: 20px; 
+                background: #1e1e1e; 
+                color: #d4d4d4; 
+              }
+              h2 { color: #4ec9b0; }
+              .field { 
+                margin: 15px 0; 
+                padding: 10px; 
+                background: #252526; 
+                border-left: 3px solid #4ec9b0; 
+              }
+              .label { 
+                color: #9cdcfe; 
+                font-weight: bold; 
+              }
+              pre { 
+                background: #2d2d30; 
+                padding: 10px; 
+                border-radius: 4px; 
+                overflow: auto; 
+              }
+            </style>
+          </head>
+          <body>
+            <h2>📋 Detalle del Evento #${log.id}</h2>
+            <div class="field">
+              <div class="label">Fecha/Hora:</div>
+              <div>${formatDate(log.ts || log.timestamp)}</div>
+            </div>
+            <div class="field">
+              <div class="label">Origen:</div>
+              <div>${log.origen}</div>
+            </div>
+            <div class="field">
+              <div class="label">Acción:</div>
+              <div>${log.accion}</div>
+            </div>
+            <div class="field">
+              <div class="label">Detalle completo:</div>
+              <pre>${formatJSON(log.detalle)}</pre>
+            </div>
+            ${log.hash ? `
+              <div class="field">
+                <div class="label">Hash (deduplicación):</div>
+                <div>${log.hash}</div>
+              </div>
+            ` : ''}
+          </body>
+        </html>
+      `);
+    }
+
+    // Copiar log
+    function copiarLog(index) {
+      const log = logsFiltrados[index];
+      const texto = JSON.stringify(log, null, 2);
+      copyToClipboard(texto);
+    }
+
+    // Aplicar filtros
+    function aplicarFiltros() {
+      const filtroOrigen = document.getElementById('filtroOrigen').value.toLowerCase();
+      const filtroAccion = document.getElementById('filtroAccion').value.toLowerCase();
+      const filtroFecha = document.getElementById('filtroFecha').value;
+      
+      logsFiltrados = logsGlobal.filter(log => {
+        // Filtro por origen
+        if (filtroOrigen && !log.origen.toLowerCase().includes(filtroOrigen)) {
+          return false;
+        }
+        
+        // Filtro por acción
+        if (filtroAccion && !log.accion.toLowerCase().includes(filtroAccion)) {
+          return false;
+        }
+        
+        // Filtro por fecha
+        if (filtroFecha) {
+          const logDate = new Date(log.ts || log.timestamp);
+          const hoy = new Date();
+          hoy.setHours(0, 0, 0, 0);
+          
+          if (filtroFecha === 'hoy' && logDate < hoy) return false;
+          if (filtroFecha === 'ayer') {
+            const ayer = new Date(hoy);
+            ayer.setDate(ayer.getDate() - 1);
+            if (logDate < ayer || logDate >= hoy) return false;
+          }
+          if (filtroFecha === 'semana') {
+            const semana = new Date(hoy);
+            semana.setDate(semana.getDate() - 7);
+            if (logDate < semana) return false;
+          }
+        }
+        
+        return true;
+      });
+      
+      renderLogs(logsFiltrados);
+      calcularEstadisticas();
+    }
+
+    // Calcular estadísticas
+    function calcularEstadisticas() {
+      const hoy = new Date();
+      hoy.setHours(0, 0, 0, 0);
+      
+      const eventosHoy = logsGlobal.filter(log => {
+        const logDate = new Date(log.ts || log.timestamp);
+        return logDate >= hoy;
+      }).length;
+      
+      const origenesUnicos = new Set(logsGlobal.map(log => log.origen)).size;
+      const accionesUnicas = new Set(logsGlobal.map(log => log.accion)).size;
+      
+      document.getElementById('totalEventos').textContent = logsGlobal.length;
+      document.getElementById('eventosHoy').textContent = eventosHoy;
+      document.getElementById('origenesUnicos').textContent = origenesUnicos;
+      document.getElementById('accionesUnicas').textContent = accionesUnicas;
+    }
+
+    // Renderizar gráfico de actividad
+    function renderGraficoActividad() {
+      const container = document.getElementById('actividadGrafico');
+      
+      // Agrupar por hora
+      const porHora = {};
+      for (let i = 0; i < 24; i++) {
+        porHora[i] = 0;
+      }
+      
+      logsGlobal.forEach(log => {
+        const fecha = new Date(log.ts || log.timestamp);
+        const hora = fecha.getHours();
+        porHora[hora]++;
+      });
+      
+      const maxValor = Math.max(...Object.values(porHora));
+      
+      container.innerHTML = `
+        <div class="grafico-barras">
+          ${Object.keys(porHora).map(hora => `
+            <div class="barra-container">
+              <div class="barra" style="height: ${(porHora[hora] / maxValor) * 200}px">
+                <span class="barra-valor">${porHora[hora]}</span>
+              </div>
+              <div class="barra-label">${hora}h</div>
+            </div>
+          `).join('')}
+        </div>
+      `;
+    }
+
+    // Limpiar logs
+    async function limpiarLogs() {
+      if (!confirm('¿Estás seguro de eliminar todos los logs? Esta acción no se puede deshacer.')) {
+        return;
+      }
+      
+      // En un sistema real, esto sería un endpoint DELETE
+      showWarning('⚠️ Funcionalidad de limpieza no implementada en el backend. En producción, esto eliminaría los logs del sistema.');
+    }
+
+    // Exportar logs a CSV
+    function exportarLogs() {
+      const csv = [
+        ['ID', 'Fecha', 'Origen', 'Acción', 'Detalle'],
+        ...logsGlobal.map(log => [
+          log.id,
+          formatDate(log.ts || log.timestamp),
+          log.origen,
+          log.accion,
+          JSON.stringify(log.detalle)
+        ])
+      ].map(row => row.join(',')).join('\n');
+      
+      const blob = new Blob([csv], { type: 'text/csv' });
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `logs_${new Date().toISOString().split('T')[0]}.csv`;
+      a.click();
+      
+      showSuccess('✅ Logs exportados a CSV');
+    }
+
+    // Cargar al iniciar
+    cargarLogs();
+
+    // Auto-refresh cada 5 segundos
+    setInterval(cargarLogs, 5000);
+  </script>
+</body>
+</html>

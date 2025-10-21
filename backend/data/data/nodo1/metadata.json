@@ -1,0 +1,8 @@
+{
+  "nodoId": "n1",
+  "host": "10.0.0.1",
+  "status": "up",
+  "tipo": "principal",
+  "lastSync": "2025-10-21T13:43:10.323Z",
+  "failedAt": "2025-10-21T05:22:27.897Z"
+}

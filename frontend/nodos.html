@@ -1,0 +1,359 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <title>Nodos - Sistema Distribuido</title>
+  <link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+  <div class="container">
+    <nav class="navbar">
+      <div class="nav-brand">🌐 Sistema Distribuido OO</div>
+      <div class="nav-user">
+        <span id="username"></span>
+        <button onclick="logout()" class="btn-secondary">Salir</button>
+      </div>
+    </nav>
+
+    <aside class="sidebar">
+      <ul class="menu">
+        <li><a href="dashboard.html">📊 Dashboard</a></li>
+        <li><a href="usuarios.html">👥 Usuarios</a></li>
+        <li><a href="archivos.html">📁 Archivos</a></li>
+        <li><a href="nodos.html" class="active">🖥️ Nodos</a></li>
+        <li><a href="seguridad.html">🔒 Seguridad</a></li>
+        <li><a href="auditor.html">📋 Auditoría</a></li>
+        <li><a href="replicacion.html">🔄 Replicación</a></li>
+      </ul>
+    </aside>
+
+    <main class="content">
+      <h1>🖥️ Gestión de Nodos</h1>
+
+      <div class="action-bar">
+        <button onclick="showAddNodeModal()" class="btn-primary">+ Agregar Nodo</button>
+        <button onclick="loadNodos()" class="btn-secondary">🔄 Refrescar</button>
+        <button onclick="demoTolerancia()" class="btn-demo">
+          🔴 Demo: Tolerancia a Fallos
+        </button>
+      </div>
+
+      <!-- Grid de nodos -->
+      <div id="nodosGrid" class="nodos-grid"></div>
+
+      <!-- Modal agregar nodo -->
+      <div id="modalNodo" class="modal" style="display:none;">
+        <div class="modal-content">
+          <span class="close" onclick="closeModalNodo()">&times;</span>
+          <h2>Agregar Nodo al Cluster</h2>
+          <form id="formNodo" onsubmit="addNodo(event)">
+            <div class="form-group">
+              <label>Host/IP</label>
+              <input type="text" id="nodoHost" placeholder="10.0.0.4" required>
+            </div>
+            
+            <div class="form-group">
+              <label>Tipo de nodo</label>
+              <select id="nodoTipo" required>
+                <option value="almacen">Almacenamiento</option>
+                <option value="replica">Réplica</option>
+                <option value="analisis">Análisis</option>
+                <option value="balanceador">Balanceador</option>
+              </select>
+            </div>
+            
+            <div class="form-actions">
+              <button type="submit" class="btn-primary">Agregar</button>
+              <button type="button" onclick="closeModalNodo()" class="btn-secondary">Cancelar</button>
+            </div>
+          </form>
+        </div>
+      </div>
+
+      <!-- Demo de tolerancia a fallos -->
+      <div id="demoTolerancia" class="demo-section" style="display:none;">
+        <h2>🎯 Demostración: Tolerancia a Fallos</h2>
+        <div class="demo-explanation">
+          <p><strong>Escenario:</strong> Simulación de caída de nodo y recuperación automática</p>
+          <ol>
+            <li>Selecciona un nodo activo</li>
+            <li>Simula su caída</li>
+            <li>Observa cómo el sistema redirige a las réplicas</li>
+            <li>Recupera el nodo y observa la sincronización</li>
+          </ol>
+        </div>
+
+        <div class="demo-controls">
+          <select id="nodoDemo" class="form-control">
+            <option value="">Selecciona un nodo...</option>
+          </select>
+          <button onclick="simularCaida()" class="btn-danger">🔴 Simular Caída</button>
+          <button onclick="recuperarNodo()" class="btn-success">🟢 Recuperar Nodo</button>
+        </div>
+
+        <div id="demoLogs" class="demo-logs"></div>
+        
+        <button onclick="cerrarDemoTolerancia()" class="btn-secondary">Cerrar Demo</button>
+      </div>
+    </main>
+  </div>
+
+  <div id="notifications"></div>
+
+  <script src="js/config.js"></script>
+  <script src="js/main.js"></script>
+  <script>
+    checkAuth();
+    document.getElementById('username').textContent = localStorage.getItem('username');
+
+    let nodosGlobal = [];
+
+    // Cargar nodos
+    async function loadNodos() {
+      try {
+        const data = await fetchAPI('/nodos');
+        nodosGlobal = data.nodos || [];
+        renderNodos(nodosGlobal);
+      } catch (error) {
+        showError('Error cargando nodos');
+      }
+    }
+
+    function renderNodos(nodos) {
+      const container = document.getElementById('nodosGrid');
+      
+      container.innerHTML = nodos.map(nodo => `
+        <div class="nodo-card-large ${nodo.status}">
+          <div class="nodo-header-large">
+            <div>
+              <h3>${nodo.id}</h3>
+              <span class="nodo-tipo">${nodo.tipo}</span>
+            </div>
+            <span class="nodo-status-badge ${nodo.status}">
+              ${nodo.status === 'up' ? '🟢 Online' : '🔴 Offline'}
+            </span>
+          </div>
+          
+          <div class="nodo-body">
+            <div class="nodo-info-row">
+              <span class="label">Host:</span>
+              <span class="value">${nodo.host}</span>
+            </div>
+            
+            ${nodo.lastSync ? `
+              <div class="nodo-info-row">
+                <span class="label">Última sync:</span>
+                <span class="value">${formatDate(nodo.lastSync)}</span>
+              </div>
+            ` : ''}
+            
+            ${nodo.createdAt ? `
+              <div class="nodo-info-row">
+                <span class="label">Creado:</span>
+                <span class="value">${formatDate(nodo.createdAt)}</span>
+              </div>
+            ` : ''}
+
+            ${nodo.failedAt ? `
+              <div class="nodo-info-row alert">
+                <span class="label">⚠️ Caída:</span>
+                <span class="value">${formatDate(nodo.failedAt)}</span>
+              </div>
+            ` : ''}
+          </div>
+          
+          <div class="nodo-actions">
+            ${nodo.status === 'up' ? 
+              `<button onclick="simularFalloNodo('${nodo.id}')" class="btn-danger-small">🔴 Simular Caída</button>` :
+              `<button onclick="recuperarNodoDirecto('${nodo.id}')" class="btn-success-small">🟢 Recuperar</button>`
+            }
+            <button onclick="verMetadata('${nodo.id}')" class="btn-small">ℹ️ Metadata</button>
+          </div>
+        </div>
+      `).join('');
+    }
+
+    // Agregar nodo
+    function showAddNodeModal() {
+      document.getElementById('modalNodo').style.display = 'block';
+    }
+
+    function closeModalNodo() {
+      document.getElementById('modalNodo').style.display = 'none';
+    }
+
+    async function addNodo(e) {
+      e.preventDefault();
+      
+      const host = document.getElementById('nodoHost').value;
+      const tipo = document.getElementById('nodoTipo').value;
+      
+      try {
+        await fetchAPI('/nodos', {
+          method: 'POST',
+          body: JSON.stringify({ host, tipo })
+        });
+        
+        showSuccess('✅ Nodo agregado al cluster');
+        closeModalNodo();
+        loadNodos();
+      } catch (error) {
+        showError('Error agregando nodo: ' + error.message);
+      }
+    }
+
+    // Simular fallo de nodo
+    async function simularFalloNodo(nodoId) {
+      if (!confirm(`¿Simular caída del nodo ${nodoId}?`)) return;
+      
+      try {
+        showWarning(`🔴 Simulando caída del nodo ${nodoId}...`);
+        
+        const response = await fetchAPI(`/nodos/${nodoId}/simular-caida`, {
+          method: 'POST'
+        });
+        
+        showSuccess(`✅ ${response.mensaje}. Datos migrados a: ${response.nodosAlternativos?.join(', ')}`);
+        
+        setTimeout(loadNodos, 1000);
+      } catch (error) {
+        showError('Error simulando fallo: ' + error.message);
+      }
+    }
+
+    // Recuperar nodo
+    async function recuperarNodoDirecto(nodoId) {
+      if (!confirm(`¿Recuperar el nodo ${nodoId}?`)) return;
+      
+      try {
+        showWarning(`🟢 Recuperando nodo ${nodoId}...`);
+        
+        const response = await fetchAPI(`/nodos/${nodoId}/recuperar`, {
+          method: 'POST'
+        });
+        
+        showSuccess(`✅ ${response.mensaje}. ${response.accion}`);
+        
+        setTimeout(loadNodos, 1000);
+      } catch (error) {
+        showError('Error recuperando nodo: ' + error.message);
+      }
+    }
+
+    // Ver metadata
+    async function verMetadata(nodoId) {
+      try {
+        const metadata = await fetchAPI(`/nodos/${nodoId}/metadata`);
+        
+        const formatted = formatJSON(metadata);
+        
+        const popup = window.open('', 'Metadata', 'width=600,height=400');
+        popup.document.write(`
+          <html>
+            <head>
+              <title>Metadata - ${nodoId}</title>
+              <style>
+                body { font-family: monospace; padding: 20px; background: #1e1e1e; color: #d4d4d4; }
+                pre { background: #252526; padding: 15px; border-radius: 5px; overflow: auto; }
+                h2 { color: #4ec9b0; }
+              </style>
+            </head>
+            <body>
+              <h2>Metadata del nodo ${nodoId}</h2>
+              <pre>${formatted}</pre>
+            </body>
+          </html>
+        `);
+      } catch (error) {
+        showError('Error cargando metadata');
+      }
+    }
+
+    // DEMO DE TOLERANCIA A FALLOS
+    function demoTolerancia() {
+      const select = document.getElementById('nodoDemo');
+      select.innerHTML = '<option value="">Selecciona un nodo...</option>' +
+        nodosGlobal.map(n => `<option value="${n.id}">${n.id} - ${n.status}</option>`).join('');
+      
+      document.getElementById('demoTolerancia').style.display = 'block';
+      addDemoLog('ℹ️ Demo iniciada. Selecciona un nodo para comenzar.');
+    }
+
+    async function simularCaida() {
+      const nodoId = document.getElementById('nodoDemo').value;
+      if (!nodoId) {
+        showWarning('Selecciona un nodo primero');
+        return;
+      }
+      
+      addDemoLog(`🔴 Simulando caída del nodo ${nodoId}...`);
+      
+      try {
+        const response = await fetchAPI(`/nodos/${nodoId}/simular-caida`, {
+          method: 'POST'
+        });
+        
+        addDemoLog(`✅ ${response.mensaje}`);
+        addDemoLog(`⚙️ ${response.accion}`);
+        addDemoLog(`📊 Nodos alternativos: ${response.nodosAlternativos?.join(', ')}`);
+        
+        // Intentar leer archivos desde réplica
+        setTimeout(async () => {
+          try {
+            const archivos = await fetchAPI('/archivos');
+            addDemoLog(`✅ Sistema sigue operativo. Archivos leídos desde: ${archivos.metadata?.nodo || 'réplica'}`);
+          } catch (error) {
+            addDemoLog(`❌ Error: ${error.message}`);
+          }
+        }, 1000);
+        
+        loadNodos();
+      } catch (error) {
+        addDemoLog(`❌ Error: ${error.message}`);
+      }
+    }
+
+    async function recuperarNodo() {
+      const nodoId = document.getElementById('nodoDemo').value;
+      if (!nodoId) {
+        showWarning('Selecciona un nodo primero');
+        return;
+      }
+      
+      addDemoLog(`🟢 Recuperando nodo ${nodoId}...`);
+      
+      try {
+        const response = await fetchAPI(`/nodos/${nodoId}/recuperar`, {
+          method: 'POST'
+        });
+        
+        addDemoLog(`✅ ${response.mensaje}`);
+        addDemoLog(`🔄 ${response.accion}`);
+        addDemoLog(`⏱️ Sincronización completada en ~500ms`);
+        
+        loadNodos();
+      } catch (error) {
+        addDemoLog(`❌ Error: ${error.message}`);
+      }
+    }
+
+    function addDemoLog(message) {
+      const logsDiv = document.getElementById('demoLogs');
+      const timestamp = new Date().toLocaleTimeString();
+      logsDiv.innerHTML += `<div class="demo-log-entry">[${timestamp}] ${message}</div>`;
+      logsDiv.scrollTop = logsDiv.scrollHeight;
+    }
+
+    function cerrarDemoTolerancia() {
+      document.getElementById('demoTolerancia').style.display = 'none';
+      document.getElementById('demoLogs').innerHTML = '';
+    }
+
+    // Cargar al iniciar
+    loadNodos();
+
+    // Auto-refresh cada 5 segundos
+    setInterval(loadNodos, 5000);
+  </script>
+</body>
+</html>

@@ -1,0 +1,65 @@
+[
+  {
+    "id": "d4a939e6-88cb-4ee2-958f-be7006e815dd",
+    "nombre": "s",
+    "contenido": "s",
+    "owner": "u1",
+    "version": 1,
+    "nodoId": "nodo1",
+    "replicas": [
+      "nodo2"
+    ],
+    "createdAt": "2025-10-21T04:50:40.960Z"
+  },
+  {
+    "id": "a66ef396-b553-4ead-9482-ffd46079c8a1",
+    "nombre": "s",
+    "contenido": "s",
+    "owner": "u1",
+    "version": 1,
+    "nodoId": "nodo1",
+    "replicas": [
+      "nodo2"
+    ],
+    "createdAt": "2025-10-21T05:31:47.507Z"
+  },
+  {
+    "id": "121e2a64-641f-4201-bbc7-39437b0fb6a7",
+    "nombre": "demo_concurrencia.txt",
+    "contenido": "Contenido inicial para demo",
+    "owner": "demo",
+    "version": 2,
+    "nodoId": "nodo1",
+    "replicas": [
+      "nodo2"
+    ],
+    "createdAt": "2025-10-21T05:31:54.865Z",
+    "updatedAt": "2025-10-21T05:32:13.801Z"
+  },
+  {
+    "id": "e0f00e24-016c-48a1-a3d4-17aa01f99dd5",
+    "nombre": "demo_concurrencia.txt",
+    "contenido": "Contenido inicial para demo",
+    "owner": "demo",
+    "version": 2,
+    "nodoId": "nodo1",
+    "replicas": [
+      "nodo2"
+    ],
+    "createdAt": "2025-10-21T13:41:50.028Z",
+    "updatedAt": "2025-10-21T13:41:54.258Z"
+  },
+  {
+    "id": "cd1407fa-3f7e-4497-987a-59c6fc66fa62",
+    "nombre": "demo_concurrencia.txt",
+    "contenido": "Contenido inicial para demo",
+    "owner": "demo",
+    "version": 2,
+    "nodoId": "nodo1",
+    "replicas": [
+      "nodo2"
+    ],
+    "createdAt": "2025-10-21T13:42:52.497Z",
+    "updatedAt": "2025-10-21T13:43:10.307Z"
+  }
+]

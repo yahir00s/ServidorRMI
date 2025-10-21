@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Dashboard - Sistema Distribuido</title>
+  <link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+  <div class="container">
+    <!-- Navegación -->
+    <nav class="navbar">
+      <div class="nav-brand">🌐 Sistema Distribuido OO</div>
+      <div class="nav-user">
+        <span id="username"></span>
+        <button onclick="logout()" class="btn-secondary">Salir</button>
+      </div>
+    </nav>
+
+    <!-- Menú lateral -->
+    <aside class="sidebar">
+      <ul class="menu">
+        <li><a href="dashboard.html" class="active">📊 Dashboard</a></li>
+        <li><a href="usuarios.html">👥 Usuarios</a></li>
+        <li><a href="archivos.html">📁 Archivos</a></li>
+        <li><a href="nodos.html">🖥️ Nodos</a></li>
+        <li><a href="seguridad.html">🔒 Seguridad</a></li>
+        <li><a href="auditor.html">📋 Auditoría</a></li>
+        <li><a href="replicacion.html">🔄 Replicación</a></li>
+      </ul>
+    </aside>
+
+    <!-- Contenido principal -->
+    <main class="content">
+      <h1>Dashboard del Sistema</h1>
+      
+      <!-- Tarjetas de resumen -->
+      <div class="cards-grid">
+        <div class="card">
+          <h3>🖥️ Nodos Activos</h3>
+          <div class="card-value" id="nodosActivos">-</div>
+          <p class="card-detail">de <span id="nodosTotal">-</span> totales</p>
+        </div>
+        
+        <div class="card">
+          <h3>📁 Archivos</h3>
+          <div class="card-value" id="archivosTotal">-</div>
+          <p class="card-detail">almacenados</p>
+        </div>
+        
+        <div class="card">
+          <h3>👥 Usuarios</h3>
+          <div class="card-value" id="usuariosTotal">-</div>
+          <p class="card-detail">registrados</p>
+        </div>
+        
+        <div class="card">
+          <h3>📋 Logs</h3>
+          <div class="card-value" id="logsTotal">-</div>
+          <p class="card-detail">eventos registrados</p>
+        </div>
+      </div>
+
+      <!-- Estado de nodos -->
+      <div class="section">
+        <h2>Estado de Nodos</h2>
+        <div id="nodosStatus"></div>
+      </div>
+
+      <!-- Actividad reciente -->
+      <div class="section">
+        <h2>Actividad Reciente</h2>
+        <div id="actividadReciente"></div>
+      </div>
+
+      <!-- Demostraciones rápidas -->
+      <div class="section">
+        <h2>🎯 Demostraciones Rápidas</h2>
+        <div class="demo-buttons">
+          <button onclick="demoToleranciaFallos()" class="btn-demo">
+            🔴 Simular Caída de Nodo
+          </button>
+          <button onclick="demoConcurrencia()" class="btn-demo">
+            ⚡ Probar Concurrencia
+          </button>
+          <button onclick="demoReplicacion()" class="btn-demo">
+            🔄 Forzar Replicación
+          </button>
+          <button onclick="demoSeguridad()" class="btn-demo">
+            🔒 Prueba de Seguridad
+          </button>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <div id="notifications"></div>
+
+  <script src="js/config.js"></script>
+  <script src="js/main.js"></script>
+  <script>
+    checkAuth();
+    document.getElementById('username').textContent = localStorage.getItem('username');
+
+    // Cargar datos del dashboard
+    async function loadDashboard() {
+      try {
+        // Nodos
+        const nodosData = await fetchAPI('/nodos');
+        document.getElementById('nodosTotal').textContent = nodosData.total || 0;
+        document.getElementById('nodosActivos').textContent = nodosData.activos || 0;
+        renderNodosStatus(nodosData.nodos || []);
+
+        // Archivos
+        const archivosData = await fetchAPI('/archivos');
+        document.getElementById('archivosTotal').textContent = 
+          archivosData.archivos?.length || 0;
+
+        // Usuarios
+        const usuariosData = await fetchAPI('/usuarios');
+        document.getElementById('usuariosTotal').textContent = 
+          usuariosData.usuarios?.length || 0;
+
+        // Logs
+        const logsData = await fetchAPI('/auditor/logs');
+        document.getElementById('logsTotal').textContent = logsData.length || 0;
+        renderActividadReciente(logsData.slice(-5).reverse());
+
+      } catch (error) {
+        showError('Error cargando dashboard: ' + error.message);
+      }
+    }
+
+    function renderNodosStatus(nodos) {
+      const container = document.getElementById('nodosStatus');
+      container.innerHTML = nodos.map(nodo => `
+        <div class="nodo-card ${nodo.status}">
+          <div class="nodo-header">
+            <span class="nodo-id">${nodo.id}</span>
+            <span class="nodo-status">${nodo.status === 'up' ? '🟢' : '🔴'} ${nodo.status}</span>
+          </div>
+          <div class="nodo-info">
+            <p><strong>Host:</strong> ${nodo.host}</p>
+            <p><strong>Tipo:</strong> ${nodo.tipo}</p>
+            ${nodo.lastSync ? `<p><strong>Última sync:</strong> ${formatDate(nodo.lastSync)}</p>` : ''}
+          </div>
+        </div>
+      `).join('');
+    }
+
+    function renderActividadReciente(logs) {
+      const container = document.getElementById('actividadReciente');
+      if (logs.length === 0) {
+        container.innerHTML = '<p class="empty-state">No hay actividad reciente</p>';
+        return;
+      }
+      
+      container.innerHTML = `
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>Fecha</th>
+              <th>Origen</th>
+              <th>Acción</th>
+              <th>Detalle</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${logs.map(log => `
+              <tr>
+                <td>${formatDate(log.ts || log.timestamp)}</td>
+                <td>${log.origen}</td>
+                <td><span class="badge">${log.accion}</span></td>
+                <td>${JSON.stringify(log.detalle)}</td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+      `;
+    }
+
+    // Demostraciones rápidas
+    async function demoToleranciaFallos() {
+      if (!confirm('¿Simular caída del nodo1? Esto demostrará la tolerancia a fallos.')) return;
+      
+      try {
+        showWarning('🔴 Simulando caída del nodo1...');
+        await fetchAPI('/nodos/nodo1/simular-caida', { method: 'POST' });
+        showSuccess('✅ Nodo caído. El sistema migró a las réplicas.');
+        setTimeout(loadDashboard, 1000);
+      } catch (error) {
+        showError('Error en demo: ' + error.message);
+      }
+    }
+
+    async function demoConcurrencia() {
+      window.location.href = 'archivos.html?demo=concurrencia';
+    }
+
+    async function demoReplicacion() {
+      window.location.href = 'replicacion.html';
+    }
+
+    async function demoSeguridad() {
+      window.location.href = 'seguridad.html?demo=auto';
+    }
+
+    // Cargar dashboard al iniciar
+    loadDashboard();
+
+    // Auto-refresh cada 10 segundos
+    setInterval(loadDashboard, 10000);
+  </script>
+</body>
+</html>
